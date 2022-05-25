@@ -1,0 +1,28 @@
+﻿IF NOT EXISTS (SELECT 1 FROM sys. databases WHERE name = N'Vehicle') 
+	BEGIN
+		CREATE DATABASE Vehicle		
+		COLLATE Lithuanian_CI_AS;
+		PRINT 'Database created'
+	END
+ELSE
+	BEGIN
+		PRINT 'Database already exists'
+	END
+
+ALTER SERVER ROLE [sysadmin] ADD MEMBER [NT AUTHORITY\SYSTEM]
+GO
+USE [Vehicle]
+GO
+IF NOT EXISTS (SELECT 1 from sys.database_principals where type not in ('A', 'G', 'R', 'X') and name = 'NT AUTHORITY\SYSTEM') 
+	BEGIN
+		CREATE USER [NT AUTHORITY\SYSTEM] FOR LOGIN [NT AUTHORITY\SYSTEM]
+	END
+GO
+USE [Vehicle]
+GO
+ALTER USER [NT AUTHORITY\SYSTEM] WITH DEFAULT_SCHEMA=[dbo]
+GO
+USE [Vehicle]
+GO
+ALTER ROLE [db_owner] ADD MEMBER [NT AUTHORITY\SYSTEM]
+GO

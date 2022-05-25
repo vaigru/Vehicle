@@ -1,0 +1,148 @@
+<#@ assembly name="System.Runtime" #>
+<#@ assembly name="NetStandard" #>
+<#@ assembly name="System.Core" #>
+<#@ assembly name="Newtonsoft.Json" #>
+<#@ assembly name="System.Data" #>
+<#@ assembly name="Microsoft.CSharp" #>
+<#@ import namespace="System.Data.SqlClient" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="Newtonsoft.Json" #>
+<#@ template language="C#" hostspecific="true"#>
+<#@ output encoding="utf-8" extension=".json" #>
+<# 
+    var currentPath = Host.ResolvePath(string.Empty);
+
+    var program = new Redistributor();
+    program.StartUp(currentPath);
+#>
+<#+
+
+public class Entry
+{
+    public int Order { get; private set; }
+    public string Path { get; private set; }
+    public string SearchPattern { get; private set; }
+    public Action<Entry, string> Distributor { get; private set; }
+
+    public Entry(int order, string path, string searchPattern, Action<Entry, string> distributor)
+    {
+        Order = order;
+        Path = path;
+        SearchPattern = searchPattern;
+        Distributor = distributor;
+    }
+}
+
+public static class Distributor
+{
+    public static void SimpleDistribution(Entry entry, string currentPath)
+    {
+        var fileInfos = new DirectoryInfo(currentPath).GetFiles(entry.SearchPattern)
+            .Where(fi => !fi.Name.Contains("PocoGenerator.cs"));
+
+        foreach (var fileInfo in fileInfos)
+        {
+            MoveTo(fileInfo, entry);
+        }
+    }
+
+    public static void DistributeDBContext(Entry entry, string currentPath)
+    {
+        var files = new DirectoryInfo(currentPath).GetFiles("*DBContext.cs");
+
+        foreach (var file in files)
+        {
+            MoveTo(file, entry);
+        }
+    }
+
+    public static void DistributeDBFactory(Entry entry, string currentPath)
+    {
+        var dbContext = new DirectoryInfo(currentPath).GetFiles("*DBContextFactory.cs").FirstOrDefault();
+
+        MoveTo(dbContext, entry);
+    }
+    public static void DistributeDummy(Entry entry, string currentPath)
+    {
+        MoveTo(GetFileInfo(currentPath, $"FakeDbSet.cs"), entry);
+
+        var fakeDBContext = new DirectoryInfo(currentPath).GetFiles("Fake*DBContext.cs").FirstOrDefault();
+        MoveTo(fakeDBContext, entry);
+    }
+
+    private static FileInfo GetFileInfo(string currentPath, string fileName)
+    {
+        return new FileInfo(Path.Combine(currentPath, fileName));
+    }
+
+    private static void MoveTo(FileInfo fileInfo, Entry entry)
+    {
+        fileInfo.MoveTo(Path.Combine(entry.Path, fileInfo.Name));
+    }
+}
+
+public class Redistributor
+{
+    public void StartUp(string currentPath) {
+        var entries = new List<Entry>()
+        {
+            new Entry(0, @$"{currentPath}\..\Dummy", null, Distributor.DistributeDummy),
+            
+            new Entry(1, @$"{currentPath}\..\DBContext", null, Distributor.DistributeDBContext),
+            new Entry(1, @$"{currentPath}\..\DBContext\Factory", null, Distributor.DistributeDBFactory),
+
+            new Entry(2, @$"{currentPath}\..\Configuration", "*Configuration.cs", Distributor.SimpleDistribution),
+
+            new Entry(3, @$"{currentPath}\..\Authentication", "auth_*.cs", Distributor.SimpleDistribution),
+            new Entry(3, @$"{currentPath}\..\Clasificators", "classif_*.cs", Distributor.SimpleDistribution),
+            new Entry(3, @$"{currentPath}\..\Constants", "const_*.cs", Distributor.SimpleDistribution),
+
+            new Entry(4, @$"{currentPath}\..\Entities", "*.cs", Distributor.SimpleDistribution)
+        };
+
+        EnsureStructure(entries, currentPath);
+        Distribute(entries, currentPath);
+    }
+    
+    static void EnsureStructure(List<Entry> entries, string currentPath)
+    {
+        if (!Directory.Exists(currentPath))
+        {
+            throw new Exception($"Input directory {Path.GetFullPath(currentPath)} was not found.");
+        }
+
+        foreach (var path in entries.Select(entry => entry.Path))
+        {
+            ProcessDirectory(path);
+        }
+    }
+
+    static void ProcessDirectory(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            var directoryInfo = new DirectoryInfo(path);
+
+            foreach (var file in directoryInfo.GetFiles())
+            {
+                file.Delete();
+            }
+        }
+        else
+        {
+            Directory.CreateDirectory(path);
+        }
+    }
+
+    static void Distribute(List<Entry> entries, string currentPath)
+    {
+        foreach (var entry in entries.OrderBy(entry => entry.Order))
+        {
+            entry.Distributor(entry, currentPath);
+        }
+    }    
+}
+#>
